@@ -1,0 +1,36 @@
+{% if plantillas %}
+<section class="panel">
+  <h2>Enviar mensaje</h2>
+
+  <h3 class="small" style="margin-bottom:8px;">WhatsApp (1 clic)</h3>
+  {% if enlaces_wa %}
+    <div class="actions" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+      {% for nombre, link in enlaces_wa %}
+        {% if link %}
+          <a class="btn small primary" href="{{ link }}" target="_blank">{{ nombre }}</a>
+        {% else %}
+          <span class="btn small" title="El cliente no tiene teléfono">{{ nombre }}</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="empty small">Crea plantillas de WhatsApp en la sección Mensajes.</p>
+  {% endif %}
+
+  <h3 class="small" style="margin-bottom:8px;">Programar (WhatsApp o Email)</h3>
+  <form method="post" action="{{ url_for('mensaje_nueva') }}">
+    <label>Plantilla
+      <select name="plantilla_id" required>
+        {% for p in plantillas if p.activa %}
+        <option value="{{ p.id }}">{{ p.nombre }} ({{ 'Email' if p.canal=='email' else 'WhatsApp' }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <input type="hidden" name="contacto_id" value="{{ contacto_sel or '' }}">
+    <input type="hidden" name="empresa_id" value="{{ empresa_sel or '' }}">
+    <input type="hidden" name="venta_id" value="{{ venta_sel or '' }}">
+    <label>Fecha y hora (vacío = en cuanto pueda)<input type="datetime-local" name="fecha_hora"></label>
+    <button class="btn primary">Programar mensaje</button>
+  </form>
+</section>
+{% endif %}

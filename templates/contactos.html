@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Contactos · CRM{% endblock %}
+{% block heading %}Contactos{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <button class="btn primary" data-open-form="contacto-form">+ Nuevo contacto</button>
+  <span class="count">{{ lista|length }} contactos</span>
+</div>
+
+<div class="panel">
+  {% if lista %}
+  <table class="table">
+    <thead><tr><th>Nombre</th><th>Empresa</th><th>Email</th><th>Teléfono</th><th>Cargo</th><th></th></tr></thead>
+    <tbody>
+    {% for c in lista %}
+      <tr>
+        <td><a href="{{ url_for('contacto_detalle', cid=c.id) }}">{{ c.nombre }}</a></td>
+        <td>{{ c.empresa or '—' }}</td>
+        <td>{{ c.email or '—' }}</td>
+        <td>{{ c.telefono or '—' }}</td>
+        <td>{{ c.cargo or '—' }}</td>
+        <td class="actions">
+          <button class="btn small" data-open-form="contacto-form"
+            data-id="{{ c.id }}" data-nombre="{{ c.nombre }}" data-email="{{ c.email }}"
+            data-telefono="{{ c.telefono }}" data-cargo="{{ c.cargo }}"
+            data-empresa-nombre="{{ c.empresa or '' }}" data-notas="{{ c.notas }}">Editar</button>
+          <form method="post" action="{{ url_for('contacto_eliminar', cid=c.id) }}"
+                onsubmit="return confirm('¿Eliminar este contacto?');">
+            <button class="btn small danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">No hay contactos todavía. Añade el primero con el botón de arriba.</p>
+  {% endif %}
+</div>
+
+<template id="contacto-form">
+  <form method="post" action="{{ url_for('contacto_nuevo') }}" id="contacto-form-f">
+    <h3>Nuevo contacto</h3>
+    <input type="hidden" name="id">
+    <label>Nombre *<input name="nombre" required></label>
+    <label>Email<input name="email" type="email"></label>
+    <label>Teléfono<input name="telefono"></label>
+    <label>Cargo<input name="cargo"></label>
+    <label>Empresa
+      <input name="empresa_nombre" list="empresas-datalist" placeholder="Escribe el nombre de la empresa (la crea si no existe)">
+      <datalist id="empresas-datalist">
+        {% for e in empresas_lista %}<option value="{{ e.nombre }}"></option>{% endfor %}
+      </datalist>
+    </label>
+    <label>Notas<textarea name="notas" rows="3"></textarea></label>
+    <div class="modal-actions">
+      <button type="button" class="btn" data-close>Cancelar</button>
+      <button type="submit" class="btn primary">Guardar</button>
+    </div>
+  </form>
+</template>
+{% endblock %}

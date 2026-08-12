@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ emp.nombre }} · CRM{% endblock %}
+{% block heading %}{{ emp.nombre }}{% endblock %}
+
+{% block content %}
+<p><a href="{{ url_for('empresas') }}">&larr; Volver a empresas</a></p>
+
+{% include "_mensajes.html" %}
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Datos de la empresa</h2>
+    <dl class="detail">
+      <dt>Sector</dt><dd>{{ emp.sector or '—' }}</dd>
+      <dt>Teléfono</dt><dd>{{ emp.telefono or '—' }}</dd>
+      <dt>Email</dt><dd>{{ emp.email or '—' }}</dd>
+      <dt>Web</dt><dd>{{ emp.web or '—' }}</dd>
+      <dt>Dirección</dt><dd>{{ emp.direccion or '—' }}</dd>
+      <dt>Notas</dt><dd>{{ emp.notas or '—' }}</dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <h2>Contactos</h2>
+    {% if contactos_lista %}
+      <ul class="list">
+        {% for c in contactos_lista %}
+        <li><a href="{{ url_for('contacto_detalle', cid=c.id) }}">{{ c.nombre }}</a>
+          <span class="muted">{{ c.cargo }} · {{ c.email }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">Sin contactos vinculados.</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Ventas</h2>
+    {% if ventas_lista %}
+      <ul class="list">
+        {% for v in ventas_lista %}
+        <li><a href="{{ url_for('venta_detalle', vid=v.id) }}">{{ v.titulo }}</a>
+          <span class="muted">· {{ v.valor | money }}</span>
+          <span class="etapa etapa-{{ v.etapa|lower }}">{{ v.etapa }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">Sin ventas.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Tareas</h2>
+    {% if tareas_lista %}
+      <ul class="list">
+        {% for t in tareas_lista %}
+        <li><strong>{{ t.titulo }}</strong>
+          <span class="muted">{% if t.completada %}✔ Completada{% elif t.vencimiento %}· vence {{ t.vencimiento }}{% endif %}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">Sin tareas.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Notas</h2>
+  <form method="post" action="{{ url_for('nota_nueva') }}">
+    <input type="hidden" name="empresa_id" value="{{ emp.id }}">
+    <label>Añadir nota<textarea name="contenido" rows="2" required></textarea></label>
+    <button class="btn primary">Guardar nota</button>
+  </form>
+  {% if notas_lista %}
+    <ul class="list">
+      {% for n in notas_lista %}
+      <li>{{ n.contenido }} <span class="muted">· {{ n.creado[:16] }}</span>
+        <form method="post" action="{{ url_for('nota_eliminar', nid=n.id) }}" class="inline-form">
+          <button class="btn small danger">Eliminar</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty">Sin notas.</p>
+  {% endif %}
+</section>
+{% endblock %}

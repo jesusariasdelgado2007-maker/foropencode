@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ vent.titulo }} · CRM{% endblock %}
+{% block heading %}{{ vent.titulo }}{% endblock %}
+
+{% block content %}
+<p><a href="{{ url_for('ventas') }}">&larr; Volver a ventas</a></p>
+
+{% include "_mensajes.html" %}
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Detalle de la venta</h2>
+    <dl class="detail">
+      <dt>Valor</dt><dd>{{ vent.valor | money }}</dd>
+      <dt>Etapa</dt><dd><span class="etapa etapa-{{ vent.etapa|lower }}">{{ vent.etapa }}</span></dd>
+      <dt>Empresa</dt><dd>{{ vent.empresa or '—' }}</dd>
+      <dt>Contacto</dt><dd>{{ vent.contacto or '—' }}</dd>
+      <dt>Fecha de cierre</dt><dd>{{ vent.fecha_cierre or '—' }}</dd>
+      <dt>Descripción</dt><dd>{{ vent.descripcion or '—' }}</dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <h2>Notas</h2>
+    <form method="post" action="{{ url_for('nota_nueva') }}">
+      <input type="hidden" name="venta_id" value="{{ vent.id }}">
+      <label>Añadir nota<textarea name="contenido" rows="2" required></textarea></label>
+      <button class="btn primary">Guardar nota</button>
+    </form>
+    {% if notas_lista %}
+      <ul class="list">
+        {% for n in notas_lista %}
+        <li>{{ n.contenido }} <span class="muted">· {{ n.creado[:16] }}</span>
+          <form method="post" action="{{ url_for('nota_eliminar', nid=n.id) }}" class="inline-form">
+            <button class="btn small danger">Eliminar</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">Sin notas.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

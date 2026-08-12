@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Empresas · CRM{% endblock %}
+{% block heading %}Empresas{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <button class="btn primary" data-open-form="empresa-form">+ Nueva empresa</button>
+  <span class="count">{{ lista|length }} empresas</span>
+</div>
+
+<div class="panel">
+  {% if lista %}
+  <table class="table">
+    <thead><tr><th>Nombre</th><th>Sector</th><th>Teléfono</th><th>Email</th><th></th></tr></thead>
+    <tbody>
+    {% for e in lista %}
+      <tr>
+        <td><a href="{{ url_for('empresa_detalle', eid=e.id) }}">{{ e.nombre }}</a></td>
+        <td>{{ e.sector or '—' }}</td>
+        <td>{{ e.telefono or '—' }}</td>
+        <td>{{ e.email or '—' }}</td>
+        <td class="actions">
+          <button class="btn small" data-open-form="empresa-form"
+            data-id="{{ e.id }}" data-nombre="{{ e.nombre }}" data-sector="{{ e.sector }}"
+            data-telefono="{{ e.telefono }}" data-email="{{ e.email }}" data-web="{{ e.web }}"
+            data-direccion="{{ e.direccion }}" data-notas="{{ e.notas }}">Editar</button>
+          <form method="post" action="{{ url_for('empresa_eliminar', eid=e.id) }}"
+                onsubmit="return confirm('¿Eliminar esta empresa y desvincular sus contactos?');">
+            <button class="btn small danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">No hay empresas todavía. Añade la primera.</p>
+  {% endif %}
+</div>
+
+<template id="empresa-form">
+  <form method="post" action="{{ url_for('empresa_nueva') }}" id="empresa-form-f">
+    <h3>Nueva empresa</h3>
+    <input type="hidden" name="id">
+    <label>Nombre *<input name="nombre" required></label>
+    <label>Sector<input name="sector"></label>
+    <label>Teléfono<input name="telefono"></label>
+    <label>Email<input name="email" type="email"></label>
+    <label>Web<input name="web"></label>
+    <label>Dirección<input name="direccion"></label>
+    <label>Notas<textarea name="notas" rows="3"></textarea></label>
+    <div class="modal-actions">
+      <button type="button" class="btn" data-close>Cancelar</button>
+      <button type="submit" class="btn primary">Guardar</button>
+    </div>
+  </form>
+</template>
+{% endblock %}

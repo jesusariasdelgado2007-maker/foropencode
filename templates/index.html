@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Inicio · CRM{% endblock %}
+{% block heading %}Panel de control{% endblock %}
+
+{% block content %}
+<div class="cards">
+  <div class="card">
+    <div class="card-num">{{ resumen.contactos }}</div>
+    <div class="card-label">Contactos</div>
+  </div>
+  <div class="card">
+    <div class="card-num">{{ resumen.empresas }}</div>
+    <div class="card-label">Empresas</div>
+  </div>
+  <div class="card">
+    <div class="card-num">{{ resumen.ventas_activas }}</div>
+    <div class="card-label">Ventas activas</div>
+  </div>
+  <div class="card">
+    <div class="card-num">{{ resumen.valor_pipeline | money }}</div>
+    <div class="card-label">Pipeline</div>
+  </div>
+  <div class="card good">
+    <div class="card-num">{{ resumen.ventas_ganadas }}</div>
+    <div class="card-label">Ganadas</div>
+  </div>
+  <div class="card good">
+    <div class="card-num">{{ resumen.valor_ganado | money }}</div>
+    <div class="card-label">Valor ganado</div>
+  </div>
+  <div class="card warn">
+    <div class="card-num">{{ resumen.tareas_pendientes }}</div>
+    <div class="card-label">Tareas pendientes</div>
+  </div>
+  <div class="card">
+    <div class="card-num">{{ resumen.citas_hoy }}</div>
+    <div class="card-label">Citas hoy</div>
+  </div>
+  <div class="card warn">
+    <div class="card-num">{{ resumen.mensajes_pend }}</div>
+    <div class="card-label">Mensajes por enviar</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Ventas recientes</h2>
+    {% if ultimas_ventas %}
+      <table class="table">
+        <thead><tr><th>Venta</th><th>Empresa</th><th>Valor</th><th>Etapa</th></tr></thead>
+        <tbody>
+        {% for v in ultimas_ventas %}
+          <tr>
+            <td><a href="{{ url_for('venta_detalle', vid=v.id) }}">{{ v.titulo }}</a></td>
+            <td>{{ v.empresa or v.contacto or '—' }}</td>
+            <td>{{ v.valor | money }}</td>
+            <td><span class="etapa etapa-{{ v.etapa|lower }}">{{ v.etapa }}</span></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty">Aún no hay ventas. <a href="{{ url_for('ventas') }}">Añade la primera</a>.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Próximas citas</h2>
+    {% if proximas_citas %}
+      <ul class="list">
+        {% for c in proximas_citas %}
+        <li>
+          <strong>{{ c.titulo }}</strong>
+          <span class="muted">{{ c.fecha }} {{ c.hora }}</span>
+          {% if c.contacto or c.empresa %}<span class="muted"> · {{ c.contacto or c.empresa }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">Sin citas programadas.</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Tareas pendientes</h2>
+    {% if tareas_pend %}
+      <ul class="list">
+        {% for t in tareas_pend %}
+        <li>
+          <strong>{{ t.titulo }}</strong>
+          {% if t.vencimiento %}<span class="muted"> · vence {{ t.vencimiento }}</span>{% endif %}
+          {% if t.contacto %}<span class="muted"> · {{ t.contacto }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">¡Todo al día! Sin tareas pendientes.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Pipeline de ventas</h2>
+    {% if pipeline %}
+      {% for p in pipeline %}
+      <div class="pipeline-row">
+        <span class="etapa etapa-{{ p.etapa|lower }}">{{ p.etapa }}</span>
+        <span>{{ p.c }} · {{ p.v | money }}</span>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty">Sin datos de pipeline.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

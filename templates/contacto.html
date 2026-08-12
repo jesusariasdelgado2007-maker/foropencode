@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ cont.nombre }} · CRM{% endblock %}
+{% block heading %}{{ cont.nombre }}{% endblock %}
+
+{% block content %}
+<p><a href="{{ url_for('contactos') }}">&larr; Volver a contactos</a></p>
+
+{% include "_mensajes.html" %}
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Datos de contacto</h2>
+    <dl class="detail">
+      <dt>Empresa</dt><dd>{% if cont.empresa_id %}<a href="{{ url_for('empresa_detalle', eid=cont.empresa_id) }}">{{ cont.empresa }}</a>{% else %}—{% endif %}</dd>
+      <dt>Email</dt><dd>{{ cont.email or '—' }}</dd>
+      <dt>Teléfono</dt><dd>{{ cont.telefono or '—' }}</dd>
+      <dt>Cargo</dt><dd>{{ cont.cargo or '—' }}</dd>
+      <dt>Notas</dt><dd>{{ cont.notas or '—' }}</dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <h2>Ventas</h2>
+    {% if ventas_lista %}
+      <ul class="list">
+        {% for v in ventas_lista %}
+        <li><a href="{{ url_for('venta_detalle', vid=v.id) }}">{{ v.titulo }}</a>
+          <span class="muted">· {{ v.valor | money }}</span>
+          <span class="etapa etapa-{{ v.etapa|lower }}">{{ v.etapa }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">Sin ventas.</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Tareas</h2>
+    {% if tareas_lista %}
+      <ul class="list">
+        {% for t in tareas_lista %}
+        <li><strong>{{ t.titulo }}</strong>
+          <span class="muted">{% if t.completada %}✔ Completada{% elif t.vencimiento %}· vence {{ t.vencimiento }}{% endif %}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">Sin tareas.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Notas</h2>
+    <form method="post" action="{{ url_for('nota_nueva') }}">
+      <input type="hidden" name="contacto_id" value="{{ cont.id }}">
+      <label>Añadir nota<textarea name="contenido" rows="2" required></textarea></label>
+      <button class="btn primary">Guardar nota</button>
+    </form>
+    {% if notas_lista %}
+      <ul class="list">
+        {% for n in notas_lista %}
+        <li>{{ n.contenido }} <span class="muted">· {{ n.creado[:16] }}</span>
+          <form method="post" action="{{ url_for('nota_eliminar', nid=n.id) }}" class="inline-form">
+            <button class="btn small danger">Eliminar</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">Sin notas.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

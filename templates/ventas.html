@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Ventas · CRM{% endblock %}
+{% block heading %}Ventas y seguimiento{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <button class="btn primary" data-open-form="venta-form">+ Nueva venta</button>
+  <span class="count">{{ lista|length }} ventas</span>
+</div>
+
+<div class="panel">
+  {% if lista %}
+  <table class="table">
+    <thead>
+      <tr><th>Venta</th><th>Cliente</th><th>Valor</th><th>Etapa</th><th>Cierre</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for v in lista %}
+      <tr>
+        <td><a href="{{ url_for('venta_detalle', vid=v.id) }}">{{ v.titulo }}</a></td>
+        <td>{{ v.empresa or v.contacto or '—' }}</td>
+        <td>{{ v.valor | money }}</td>
+        <td>
+          <form method="post" action="{{ url_for('venta_etapa', vid=v.id) }}" class="inline-form">
+            <select name="etapa" class="etapa-select etapa-{{ v.etapa|lower }}" onchange="this.form.submit()">
+              {% for et in etapas %}
+              <option value="{{ et }}" {{ 'selected' if et==v.etapa }}>{{ et }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+        <td>{{ v.fecha_cierre or '—' }}</td>
+        <td class="actions">
+          <button class="btn small" data-open-form="venta-form"
+            data-id="{{ v.id }}" data-titulo="{{ v.titulo }}" data-valor="{{ v.valor }}"
+            data-etapa="{{ v.etapa }}" data-empresa="{{ v.empresa_id }}"
+            data-contacto="{{ v.contacto_id }}" data-fecha="{{ v.fecha_cierre }}"
+            data-desc="{{ v.descripcion }}">Editar</button>
+          <form method="post" action="{{ url_for('venta_eliminar', vid=v.id) }}"
+                onsubmit="return confirm('¿Eliminar esta venta?');">
+            <button class="btn small danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">No hay ventas. Añade la primera para empezar a hacer seguimiento.</p>
+  {% endif %}
+</div>
+
+<template id="venta-form">
+  <form method="post" action="{{ url_for('venta_nueva') }}" id="venta-form-f">
+    <h3>Nueva venta</h3>
+    <input type="hidden" name="id">
+    <label>Título *<input name="titulo" required></label>
+    <label>Valor (€)<input name="valor" type="number" step="0.01" min="0"></label>
+    <label>Etapa
+      <select name="etapa">
+        {% for et in etapas %}<option value="{{ et }}">{{ et }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Empresa
+      <select name="empresa_id">
+        <option value="">— Ninguna —</option>
+        {% for e in empresas_lista %}<option value="{{ e.id }}">{{ e.nombre }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Contacto
+      <select name="contacto_id">
+        <option value="">— Ninguno —</option>
+        {% for c in contactos_lista %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Fecha de cierre<input name="fecha_cierre" type="date"></label>
+    <label>Descripción<textarea name="descripcion" rows="3"></textarea></label>
+    <div class="modal-actions">
+      <button type="button" class="btn" data-close>Cancelar</button>
+      <button type="submit" class="btn primary">Guardar</button>
+    </div>
+  </form>
+</template>
+{% endblock %}

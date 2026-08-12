@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Tareas · CRM{% endblock %}
+{% block heading %}Tareas{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <button class="btn primary" data-open-form="tarea-form">+ Nueva tarea</button>
+  <div class="seg">
+    <a href="{{ url_for('tareas', f='pendientes') }}" class="{{ 'active' if filtro=='pendientes' }}">Pendientes</a>
+    <a href="{{ url_for('tareas', f='todas') }}" class="{{ 'active' if filtro=='todas' }}">Todas</a>
+  </div>
+  <span class="count">{{ lista|length }} tareas</span>
+</div>
+
+<div class="panel">
+  {% if lista %}
+  <table class="table">
+    <thead><tr><th></th><th>Tarea</th><th>Cliente</th><th>Vence</th><th></th></tr></thead>
+    <tbody>
+    {% for t in lista %}
+      <tr class="{{ 'done' if t.completada }}">
+        <td>
+          <form method="post" action="{{ url_for('tarea_completar', tid=t.id) }}" class="inline-form">
+            <button type="submit" class="check {{ 'on' if t.completada }}" title="Completar/deshacer"></button>
+          </form>
+        </td>
+        <td>
+          <span class="{{ 'strike' if t.completada }}">{{ t.titulo }}</span>
+          {% if t.descripcion %}<div class="muted small">{{ t.descripcion }}</div>{% endif %}
+        </td>
+        <td>{{ t.contacto or t.empresa or '—' }}</td>
+        <td>{{ t.vencimiento or '—' }}</td>
+        <td class="actions">
+          <form method="post" action="{{ url_for('tarea_eliminar', tid=t.id) }}"
+                onsubmit="return confirm('¿Eliminar tarea?');">
+            <button class="btn small danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">No hay tareas en esta vista.</p>
+  {% endif %}
+</div>
+
+<template id="tarea-form">
+  <form method="post" action="{{ url_for('tarea_nueva') }}" id="tarea-form-f">
+    <h3>Nueva tarea</h3>
+    <label>Título *<input name="titulo" required></label>
+    <label>Fecha de vencimiento<input name="vencimiento" type="date"></label>
+    <label>Contacto
+      <select name="contacto_id">
+        <option value="">— Ninguno —</option>
+        {% for c in contactos_lista %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Empresa
+      <select name="empresa_id">
+        <option value="">— Ninguna —</option>
+        {% for e in empresas_lista %}<option value="{{ e.id }}">{{ e.nombre }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Descripción<textarea name="descripcion" rows="3"></textarea></label>
+    <div class="modal-actions">
+      <button type="button" class="btn" data-close>Cancelar</button>
+      <button type="submit" class="btn primary">Guardar</button>
+    </div>
+  </form>
+</template>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Citas · CRM{% endblock %}
+{% block heading %}Citas{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <button class="btn primary" data-open-form="cita-form">+ Nueva cita</button>
+  <span class="count">{{ lista|length }} citas</span>
+</div>
+
+<div class="panel">
+  {% if lista %}
+  <table class="table">
+    <thead><tr><th>Cita</th><th>Fecha</th><th>Hora</th><th>Cliente</th><th></th></tr></thead>
+    <tbody>
+    {% for c in lista %}
+      <tr>
+        <td>{{ c.titulo }}</td>
+        <td>{{ c.fecha }}</td>
+        <td>{{ c.hora or '—' }}</td>
+        <td>{{ c.contacto or c.empresa or '—' }}</td>
+        <td class="actions">
+          <button class="btn small" data-open-form="cita-form"
+            data-id="{{ c.id }}" data-titulo="{{ c.titulo }}" data-fecha="{{ c.fecha }}"
+            data-hora="{{ c.hora }}" data-contacto="{{ c.contacto_id }}"
+            data-empresa="{{ c.empresa_id }}" data-desc="{{ c.descripcion }}">Editar</button>
+          <form method="post" action="{{ url_for('cita_eliminar', cid=c.id) }}"
+                onsubmit="return confirm('¿Eliminar esta cita?');">
+            <button class="btn small danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">No hay citas programadas.</p>
+  {% endif %}
+</div>
+
+<template id="cita-form">
+  <form method="post" action="{{ url_for('cita_nueva') }}" id="cita-form-f">
+    <h3>Nueva cita</h3>
+    <input type="hidden" name="id">
+    <label>Título *<input name="titulo" required></label>
+    <label>Fecha *<input name="fecha" type="date" required value="{{ hoy }}"></label>
+    <label>Hora<input name="hora" type="time"></label>
+    <label>Contacto
+      <select name="contacto_id">
+        <option value="">— Ninguno —</option>
+        {% for c in contactos_lista %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Empresa
+      <select name="empresa_id">
+        <option value="">— Ninguna —</option>
+        {% for e in empresas_lista %}<option value="{{ e.id }}">{{ e.nombre }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Descripción<textarea name="descripcion" rows="3"></textarea></label>
+    <div class="modal-actions">
+      <button type="button" class="btn" data-close>Cancelar</button>
+      <button type="submit" class="btn primary">Guardar</button>
+    </div>
+  </form>
+</template>
+{% endblock %}

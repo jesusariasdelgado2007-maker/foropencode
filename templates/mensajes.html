@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Mensajes · CRM{% endblock %}
+{% block heading %}Mensajes y automatización{% endblock %}
+
+{% block content %}
+<div class="seg" style="margin-bottom:18px;">
+  <a href="#plantillas">Plantillas</a>
+  <a href="#envios">Envíos programados</a>
+  <a href="#config">Configuración</a>
+</div>
+
+<section class="panel" id="plantillas">
+  <div class="toolbar">
+    <h2>Plantillas</h2>
+    <button class="btn primary" data-open-form="plantilla-form">+ Nueva plantilla</button>
+  </div>
+  <p class="muted small" style="margin-bottom:12px;">
+    Variables disponibles: <code>{nombre_contacto}</code> <code>{empresa}</code> <code>{email_contacto}</code>
+    <code>{telefono_contacto}</code> <code>{cargo}</code> <code>{titulo_venta}</code> <code>{valor}</code>
+    <code>{etapa}</code> <code>{fecha_cierre}</code> <code>{hoy}</code>
+  </p>
+  {% if plantillas_lista %}
+  <table class="table">
+    <thead><tr><th>Nombre</th><th>Canal</th><th>Asunto</th><th>Cuerpo</th><th>Activa</th><th></th></tr></thead>
+    <tbody>
+    {% for p in plantillas_lista %}
+      <tr>
+        <td>{{ p.nombre }}</td>
+        <td><span class="etapa {{ 'etapa-ganado' if p.canal=='email' else 'etapa-prospeccion' }}">{{ 'Email' if p.canal=='email' else 'WhatsApp' }}</span></td>
+        <td>{{ p.asunto or '—' }}</td>
+        <td class="small muted">{{ p.cuerpo[:60] }}{% if p.cuerpo|length>60 %}…{% endif %}</td>
+        <td>{{ 'Sí' if p.activa else 'No' }}</td>
+        <td class="actions">
+          <button class="btn small" data-open-form="plantilla-form"
+            data-id="{{ p.id }}" data-nombre="{{ p.nombre }}" data-canal="{{ p.canal }}"
+            data-asunto="{{ p.asunto }}" data-cuerpo="{{ p.cuerpo }}"
+            data-activa="{{ p.activa }}">Editar</button>
+          <form method="post" action="{{ url_for('plantilla_eliminar', tid=p.id) }}"
+                onsubmit="return confirm('¿Eliminar plantilla?');">
+            <button class="btn small danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">Sin plantillas. Crea la primera (ej. "Hola {nombre_contacto}, le informamos de…").</p>
+  {% endif %}
+</section>
+
+<section class="panel" id="envios">
+  <h2>Programar un envío</h2>
+  <form method="post" action="{{ url_for('mensaje_nueva') }}" class="grid-2" style="border:none;">
+    <label>Plantilla
+      <select name="plantilla_id" required>
+        {% for p in plantillas_lista if p.activa %}<option value="{{ p.id }}">{{ p.nombre }} ({{ p.canal }})</option>{% endfor %}
+      </select>
+    </label>
+    <label>Contacto
+      <select name="contacto_id">
+        <option value="">— Ninguno —</option>
+        {% for c in contactos_lista %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Venta
+      <select name="venta_id">
+        <option value="">— Ninguna —</option>
+        {% for v in ventas_lista %}<option value="{{ v.id }}">{{ v.titulo }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Fecha y hora (vacío = enviar ahora)
+      <input type="datetime-local" name="fecha_hora">
+    </label>
+    <label>Destino manual (opcional; si no, usará el del contacto/empresa)
+      <input name="para" placeholder="email o teléfono">
+    </label>
+    <div class="modal-actions" style="align-items:flex-end;">
+      <button class="btn primary">Programar mensaje</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel" id="cola">
+  <h2>Cola de envíos</h2>
+  {% if cola %}
+  <table class="table">
+    <thead><tr><th>Canal</th><th>Mensaje</th><th>Para</th><th>Cuándo</th><th>Estado</th><th></th></tr></thead>
+    <tbody>
+    {% for m in cola %}
+      <tr class="{{ 'done' if m.estado=='enviado' }}">
+        <td><span class="etapa {{ 'etapa-ganado' if m.canal=='email' else 'etapa-prospeccion' }}">{{ 'Email' if m.canal=='email' else 'WhatsApp' }}</span></td>
+        <td>
+          <div><strong>{{ m.asunto or m.cuerpo[:40] }}</strong></div>
+          {% if m.empresa or m.contacto or m.venta %}
+          <div class="small muted">{{ m.contacto or m.empresa or m.venta }}</div>
+          {% endif %}
+          {% if m.error %}<div class="small" style="color:var(--red);">{{ m.error }}</div>{% endif %}
+        </td>
+        <td>{{ m.para or '—' }}</td>
+        <td>{{ m.enviar_en or '—' }}</td>
+        <td>
+          {% if m.estado=='pendiente' %}<span class="etapa etapa-propuesta">Pendiente</span>
+          {% elif m.estado=='preparado' %}<span class="etapa etapa-negociacion">Listo (WhatsApp)</span>
+          {% elif m.estado=='enviado' %}<span class="etapa etapa-ganado">Enviado{% if m.respondido %} · respondido{% endif %}</span>
+          {% elif m.estado=='fallo' %}<span class="etapa etapa-perdido">Fallo</span>
+          {% endif %}
+        </td>
+        <td class="actions">
+          {% if m.estado=='preparado' and m.link %}
+            <a class="btn small primary" href="{{ m.link }}" target="_blank">Abrir WhatsApp</a>
+          {% endif %}
+          {% if m.estado!='enviado' %}
+            <form method="post" action="{{ url_for('mensaje_enviar', mid=m.id) }}" class="inline-form">
+              <button class="btn small">Enviar ahora</button>
+            </form>
+          {% endif %}
+          {% if m.estado=='enviado' and not m.respondido %}
+            <form method="post" action="{{ url_for('mensaje_respondido', mid=m.id) }}" class="inline-form">
+              <button class="btn small">Respondido</button>
+            </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('mensaje_eliminar', mid=m.id) }}" class="inline-form">
+            <button class="btn small danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">No hay mensajes programados. Los mensajes que vencen se procesan automáticamente cada minuto.</p>
+  {% endif %}
+</section>
+
+<section class="panel" id="config">
+  <h2>Configuración de automatización</h2>
+  <form method="post" action="{{ url_for('ajustes_guardar') }}" class="grid-2" style="border:none;">
+    <label>Servidor SMTP (ej. smtp.gmail.com)<input name="smtp_host" value="{{ ajustes.get('smtp_host','') }}"></label>
+    <label>Puerto SMTP<input name="smtp_port" value="{{ ajustes.get('smtp_port','587') }}"></label>
+    <label>Email / usuario SMTP<input name="smtp_usuario" value="{{ ajustes.get('smtp_usuario','') }}"></label>
+    <label>Contraseña / app password<input type="password" name="smtp_password" value="{{ ajustes.get('smtp_password','') }}"></label>
+    <label>Correo remitente (vacío = mismo que el usuario)<input name="smtp_desde" value="{{ ajustes.get('smtp_desde','') }}"></label>
+    <label>Usar SSL directo (puerto 465)<input type="checkbox" name="smtp_ssl" value="1" {{ 'checked' if ajustes.get('smtp_ssl') }}></label>
+    <label>Días sin avance para alertar venta estancada<input type="number" name="idle_dias" min="1" value="{{ ajustes.get('idle_dias','3') }}"></label>
+    <label>Días para el reenvío automático si no responde<input type="number" name="resend_dias" min="1" value="{{ ajustes.get('resend_dias','3') }}"></label>
+    <label>Servidor IMAP (para detectar respuestas)<input name="imap_host" value="{{ ajustes.get('imap_host','imap.gmail.com') }}"></label>
+    <label style="grid-column:1/-1;">
+      <input type="checkbox" name="imap_activo" value="1" {{ 'checked' if ajustes.get('imap_activo') }}>
+      <strong>Detectar respuestas automáticamente (IMAP)</strong> — revisa tu bandeja cada minuto; si el cliente contesta un correo enviado, lo marca como respondido y cancela su reenvío.
+    </label>
+    <div class="modal-actions" style="grid-column:1/-1;">
+      <button class="btn primary">Guardar configuración</button>
+    </div>
+  </form>
+  <p class="muted small" style="margin-top:10px;">
+    El email se envía de verdad (smtplib). WhatsApp usa enlaces <code>wa.me</code>: el mensaje queda pre-escrito y
+    tú solo confirmas el envío en WhatsApp. Para Gmail/Outlook usa una "contraseña de aplicación".
+  </p>
+</section>
+
+<template id="plantilla-form">
+  <form method="post" action="{{ url_for('plantilla_nueva') }}" id="plantilla-form-f">
+    <h3>Nueva plantilla</h3>
+    <label>Nombre *<input name="nombre" required></label>
+    <label>Canal
+      <select name="canal">
+        <option value="whatsapp">WhatsApp</option>
+        <option value="email">Email</option>
+      </select>
+    </label>
+    <label>Asunto (solo email)<input name="asunto" placeholder="Asunto del correo"></label>
+    <label>Cuerpo *
+      <textarea name="cuerpo" rows="5" required
+        placeholder="Hola {nombre_contacto}, le escribimos por {titulo_venta}. …"></textarea>
+    </label>
+    <label>Activa<input type="checkbox" name="activa" value="1" checked></label>
+    <div class="modal-actions">
+      <button type="button" class="btn" data-close>Cancelar</button>
+      <button type="submit" class="btn primary">Guardar</button>
+    </div>
+  </form>
+</template>
+{% endblock %}

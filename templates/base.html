@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}CRM{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="logo">CRM</span>
+      <span class="brand-name">Gestor de Clientes</span>
+    </div>
+    <nav>
+      <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint=='index' }}">Inicio</a>
+      <a href="{{ url_for('contactos') }}" class="{{ 'active' if request.endpoint in ['contactos','contacto_detalle'] }}">Contactos</a>
+      <a href="{{ url_for('empresas') }}" class="{{ 'active' if request.endpoint in ['empresas','empresa_detalle'] }}">Empresas</a>
+      <a href="{{ url_for('ventas') }}" class="{{ 'active' if request.endpoint in ['ventas','venta_detalle'] }}">Ventas</a>
+      <a href="{{ url_for('tareas') }}" class="{{ 'active' if request.endpoint=='tareas' }}">Tareas</a>
+      <a href="{{ url_for('citas') }}" class="{{ 'active' if request.endpoint=='citas' }}">Citas</a>
+      <a href="{{ url_for('mensajes') }}" class="{{ 'active' if request.endpoint=='mensajes' }}">Mensajes</a>
+    </nav>
+    <div class="sidebar-foot">Datos guardados en tu equipo</div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <h1>{% block heading %}CRM{% endblock %}</h1>
+    </header>
+
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% if msgs %}
+        <div class="flash-box">
+          {% for cat, m in msgs %}
+            <div class="flash {{ cat }}">{{ m }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<dialog id="modal">
+  <div class="modal-inner">
+    <button class="modal-close" data-close>&times;</button>
+    <div id="modal-body"></div>
+  </div>
+</dialog>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

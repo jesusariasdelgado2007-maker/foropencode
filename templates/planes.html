@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Planes · CRM{% endblock %}
+{% block heading %}Planes de suscripción{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <button class="btn primary" data-open-form="plan-form">+ Nuevo plan</button>
+  <a class="btn" href="{{ url_for('pasarela_config') }}">Configurar cobros</a>
+  <a class="btn" href="{{ url_for('suscripciones') }}">← Suscripciones</a>
+  <span class="count">{{ lista|length }} planes</span>
+</div>
+
+<div class="panel">
+  {% if lista %}
+  <table class="table">
+    <thead><tr><th>Plan</th><th>Mensual</th><th>Anual</th><th>Usuarios</th><th>Contactos</th><th>Estado</th><th></th></tr></thead>
+    <tbody>
+    {% for p in lista %}
+      <tr>
+        <td><strong>{{ p.nombre }}</strong><br><span class="muted small">{{ p.descripcion or '' }}</span></td>
+        <td>{{ p.precio_mensual|money }}</td>
+        <td>{{ p.precio_anual|money }}</td>
+        <td>{{ p.limite_usuarios }}</td>
+        <td>{{ 'Ilimitados' if p.limite_contactos == 0 else p.limite_contactos }}</td>
+        <td><span class="estado {{ 'estado-activa' if p.activo else 'estado-cancelada' }}">{{ 'Activo' if p.activo else 'Inactivo' }}</span></td>
+        <td class="actions">
+          <button class="btn small" data-open-form="plan-form"
+            data-id="{{ p.id }}" data-nombre="{{ p.nombre }}"
+            data-precio-mensual="{{ p.precio_mensual }}" data-precio-anual="{{ p.precio_anual }}"
+            data-limite-usuarios="{{ p.limite_usuarios }}" data-limite-contactos="{{ p.limite_contactos }}"
+            data-descripcion="{{ p.descripcion }}" data-activo="{{ p.activo }}">Editar</button>
+          <form method="post" action="{{ url_for('plan_eliminar', pid=p.id) }}"
+                onsubmit="return confirm('¿Eliminar este plan? Las suscripciones que lo usan quedarán sin plan.');">
+            <button class="btn small danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">Todavía no hay planes. Crea tu primer plan para empezar a vender suscripciones.</p>
+  {% endif %}
+</div>
+
+<template id="plan-form">
+  <form method="post" action="{{ url_for('plan_nueva') }}" id="plan-form-f">
+    <h3>Nuevo plan</h3>
+    <input type="hidden" name="id">
+    <label>Nombre *<input name="nombre" required></label>
+    <label>Precio mensual<input name="precio_mensual" type="number" step="0.01" min="0"></label>
+    <label>Precio anual<input name="precio_anual" type="number" step="0.01" min="0"></label>
+    <label>Máx. usuarios<input name="limite_usuarios" type="number" min="1" value="1"></label>
+    <label>Máx. contactos (0 = ilimitado)<input name="limite_contactos" type="number" min="0" value="0"></label>
+    <label>Descripción<textarea name="descripcion" rows="3"></textarea></label>
+    <label><input name="activo" type="checkbox" checked> Plan activo (se muestra al contratar)</label>
+    <div class="modal-actions">
+      <button type="button" class="btn" data-close>Cancelar</button>
+      <button type="submit" class="btn primary">Guardar</button>
+    </div>
+  </form>
+</template>
+{% endblock %}

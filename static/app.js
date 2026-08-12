@@ -68,6 +68,14 @@ document.addEventListener("DOMContentLoaded", function () {
         form.querySelector('input[name="asunto"]').value = button.dataset.asunto || "";
         form.querySelector('textarea[name="cuerpo"]').value = button.dataset.cuerpo || "";
         form.querySelector('input[name="activa"]').checked = button.dataset.activa === "1";
+      } else if (formId.includes("plan")) {
+        form.querySelector('input[name="nombre"]').value = button.dataset.nombre || "";
+        form.querySelector('input[name="precio_mensual"]').value = button.dataset.precioMensual || "";
+        form.querySelector('input[name="precio_anual"]').value = button.dataset.precioAnual || "";
+        form.querySelector('input[name="limite_usuarios"]').value = button.dataset.limiteUsuarios || "";
+        form.querySelector('input[name="limite_contactos"]').value = button.dataset.limiteContactos || "";
+        form.querySelector('textarea[name="descripcion"]').value = button.dataset.descripcion || "";
+        form.querySelector('input[name="activo"]').checked = button.dataset.activo === "1";
       }
 
       form.querySelector("h3").textContent = "Editar";

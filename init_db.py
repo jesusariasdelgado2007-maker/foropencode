@@ -95,6 +95,48 @@ CREATE TABLE IF NOT EXISTS plantillas (
     creado TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS planes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT NOT NULL,
+    precio_mensual REAL DEFAULT 0,
+    precio_anual REAL DEFAULT 0,
+    limite_usuarios INTEGER DEFAULT 1,
+    limite_contactos INTEGER DEFAULT 0,
+    descripcion TEXT DEFAULT '',
+    activo INTEGER DEFAULT 1,
+    creado TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS suscripciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id INTEGER,
+    plan_id INTEGER,
+    estado TEXT DEFAULT 'pendiente',
+    ciclo TEXT DEFAULT 'mensual',
+    inicio DATE,
+    proximo_pago DATE,
+    ultimo_pago DATE,
+    notas TEXT DEFAULT '',
+    creado TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE SET NULL,
+    FOREIGN KEY (plan_id) REFERENCES planes(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS pagos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    suscripcion_id INTEGER,
+    monto REAL DEFAULT 0,
+    moneda TEXT DEFAULT 'EUR',
+    metodo TEXT DEFAULT 'manual',
+    transaction_id TEXT DEFAULT '',
+    url_pago TEXT DEFAULT '',
+    estado TEXT DEFAULT 'pendiente',
+    detalle TEXT DEFAULT '',
+    creado TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    pagado_en TIMESTAMP,
+    FOREIGN KEY (suscripcion_id) REFERENCES suscripciones(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS mensajes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     canal TEXT NOT NULL,
@@ -129,6 +171,20 @@ DEFAULTS = [
     ("resend_dias", "3"),
     ("imap_host", "imap.gmail.com"),
     ("imap_activo", ""),
+    ("pasarela", ""),
+    ("moneda", "EUR"),
+    ("mp_access_token", ""),
+    ("stripe_secret_key", ""),
+    ("stripe_webhook_secret", ""),
+    ("paypal_client_id", ""),
+    ("paypal_secret", ""),
+    ("paypal_sandbox", "1"),
+    ("public_url", "http://127.0.0.1:5000"),
+    ("nequi_client_id", ""),
+    ("nequi_secret", ""),
+    ("nequi_api_key", ""),
+    ("nequi_codigo_comercio", ""),
+    ("nequi_sandbox", "1"),
 ]
 
 

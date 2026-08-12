@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Configuración de cobros · CRM{% endblock %}
+{% block heading %}Configuración de cobros{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <a class="btn" href="{{ url_for('suscripciones') }}">← Suscripciones</a>
+  <a class="btn" href="{{ url_for('planes') }}">Planes</a>
+</div>
+
+<form method="post" action="{{ url_for('pasarela_guardar') }}">
+<div class="grid-2">
+  <div class="panel">
+    <h2>General</h2>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">Pasarela de pago
+      <select name="pasarela" style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;">
+        <option value="">Sin pasarela (cobro manual)</option>
+        <option value="mercadopago" {{ 'selected' if cfg.get('pasarela')=='mercadopago' }}>Mercado Pago</option>
+        <option value="stripe" {{ 'selected' if cfg.get('pasarela')=='stripe' }}>Stripe</option>
+        <option value="paypal" {{ 'selected' if cfg.get('pasarela')=='paypal' }}>PayPal</option>
+        <option value="nequi" {{ 'selected' if cfg.get('pasarela')=='nequi' }}>Nequi (Colombia)</option>
+      </select>
+    </label>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">Moneda
+      <select name="moneda" style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;">
+        {% for c in ['EUR','USD','MXN','ARS','COP','CLP','PEN','BRL','GBP'] %}
+        <option value="{{ c }}" {{ 'selected' if cfg.get('moneda')==c }}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">URL pública de tu CRM
+      <input name="public_url" value="{{ cfg.get('public_url') or 'http://127.0.0.1:5000' }}"
+        style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;">
+      <span class="muted small">Es la URL donde corre el CRM (visible desde internet) y donde recibirá los webhooks de pago.</span>
+    </label>
+  </div>
+
+  <div class="panel">
+    <h2>Mercado Pago</h2>
+    <p class="muted small" style="margin-bottom:12px;">Obtén tus credenciales en <strong>developers.mercadopago.com</strong> → Credenciales. Usa el <em>Access Token</em>.</p>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">Access Token
+      <input name="mp_access_token" value="{{ cfg.get('mp_access_token') or '' }}" type="password"
+        style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;"></label>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <h2>Stripe</h2>
+    <p class="muted small" style="margin-bottom:12px;">Obtén tus claves en <strong>dashboard.stripe.com</strong> → Developers → API keys. Configura el webhook apuntando a <code>/webhook/stripe</code> con el secreto del endpoint.</p>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">Secret Key
+      <input name="stripe_secret_key" value="{{ cfg.get('stripe_secret_key') or '' }}" type="password"
+        style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;"></label>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">Webhook signing secret
+      <input name="stripe_webhook_secret" value="{{ cfg.get('stripe_webhook_secret') or '' }}" type="password"
+        style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;"></label>
+  </div>
+
+  <div class="panel">
+    <h2>PayPal</h2>
+    <p class="muted small" style="margin-bottom:12px;">Obtén tus credenciales en <strong>developer.paypal.com</strong> → Apps &amp; credentials.</p>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">Client ID
+      <input name="paypal_client_id" value="{{ cfg.get('paypal_client_id') or '' }}"
+        style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;"></label>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">Secret
+      <input name="paypal_secret" value="{{ cfg.get('paypal_secret') or '' }}" type="password"
+        style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;"></label>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">
+      <input type="checkbox" name="paypal_sandbox" value="1" {{ 'checked' if cfg.get('paypal_sandbox')=='1' }}> Usar entorno de pruebas (sandbox)</label>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <h2>Nequi (Colombia)</h2>
+    <p class="muted small" style="margin-bottom:12px;">Para cobrar con <strong>Nequi</strong> (pago por QR desde la app). Regístrate como comercio en <strong>conecta.nequi.com.co</strong>, obtén tus credenciales y <em>certifica</em> la API de pagos con QR. Nequi cobra en pesos colombianos (COP); tus precios deben estar en COP. La confirmación se hace consultando el estado del QR.</p>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">Client ID
+      <input name="nequi_client_id" value="{{ cfg.get('nequi_client_id') or '' }}"
+        style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;"></label>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">Client Secret
+      <input name="nequi_secret" value="{{ cfg.get('nequi_secret') or '' }}" type="password"
+        style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;"></label>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">API Key (x-api-key)
+      <input name="nequi_api_key" value="{{ cfg.get('nequi_api_key') or '' }}" type="password"
+        style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;"></label>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">Código de comercio (NIT)
+      <input name="nequi_codigo_comercio" value="{{ cfg.get('nequi_codigo_comercio') or '' }}"
+        style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;">
+      <span class="muted small">Es el código que te asigna Nequi (ej. NIT_1).</span></label>
+    <label style="display:block;font-weight:600;margin-bottom:12px;">
+      <input type="checkbox" name="nequi_sandbox" value="1" {{ 'checked' if cfg.get('nequi_sandbox')=='1' }}> Usar entorno de pruebas (sandbox)</label>
+  </div>
+</div>
+
+<div class="panel">
+  <button type="submit" class="btn primary">Guardar configuración</button>
+  <span class="muted small">Las credenciales se guardan únicamente en tu equipo / base de datos.</span>
+</div>
+</form>
+{% endblock %}

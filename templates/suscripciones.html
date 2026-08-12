@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Suscripciones · CRM{% endblock %}
+{% block heading %}Suscripciones{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <button class="btn primary" data-open-form="suscripcion-form">+ Nueva suscripción</button>
+  <a class="btn" href="{{ url_for('planes') }}">Planes</a>
+  <a class="btn" href="{{ url_for('pasarela_config') }}">Configurar cobros</a>
+  <span class="count">{{ stats.total }} suscripciones</span>
+</div>
+
+<div class="cards">
+  <div class="card good"><div class="card-num">{{ stats.mrr|money }}</div><div class="card-label">Ingresos mensuales (MRR)</div></div>
+  <div class="card good"><div class="card-num">{{ stats.activas }}</div><div class="card-label">Activas</div></div>
+  <div class="card warn"><div class="card-num">{{ stats.por_vencer }}</div><div class="card-label">Vencen en 30 días</div></div>
+  <div class="card"><div class="card-num" style="color: var(--red);">{{ stats.vencidas }}</div><div class="card-label">Vencidas</div></div>
+</div>
+
+<div class="panel">
+  <h2>Licencias vendidas</h2>
+  {% if stats.lista %}
+  <table class="table">
+    <thead><tr><th>Empresa</th><th>Plan</th><th>Ciclo</th><th>Estado</th><th>Próximo pago</th><th>Último pago</th><th></th></tr></thead>
+    <tbody>
+    {% for s in stats.lista %}
+      <tr class="{{ 'done' if s.estado == 'cancelada' }}">
+        <td>{{ s.empresa_c or '—' }}</td>
+        <td>{{ s.plan_c or '—' }}</td>
+        <td>{{ 'Anual' if s.ciclo == 'anual' else 'Mensual' }}</td>
+        <td><span class="estado estado-{{ s.estado }}">{{ susc_estados.get(s.estado, s.estado) }}</span></td>
+        <td>{{ s.proximo_pago or '—' }}</td>
+        <td>{{ s.ultimo_pago or '—' }}</td>
+        <td class="actions"><a class="btn small" href="{{ url_for('suscripcion_detalle', sid=s.id) }}">Ver</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">No hay suscripciones. Crea una para vender tu primer plan.</p>
+  {% endif %}
+</div>
+
+<template id="suscripcion-form">
+  <form method="post" action="{{ url_for('suscripcion_nueva') }}" id="suscripcion-form-f">
+    <h3>Nueva suscripción</h3>
+    <label>Empresa cliente *<select name="empresa_id" required>
+      <option value="">Selecciona…</option>
+      {% for e in empresas %}<option value="{{ e.id }}">{{ e.nombre }}</option>{% endfor %}
+    </select></label>
+    <label>Plan *<select name="plan_id" required>
+      <option value="">Selecciona…</option>
+      {% for p in planes %}<option value="{{ p.id }}">{{ p.nombre }} — {{ p.precio_mensual|money }}/mes</option>{% endfor %}
+    </select></label>
+    <label>Ciclo de cobro<select name="ciclo">
+      <option value="mensual">Mensual</option>
+      <option value="anual">Anual</option>
+    </select></label>
+    <label>Notas<textarea name="notas" rows="3"></textarea></label>
+    <div class="modal-actions">
+      <button type="button" class="btn" data-close>Cancelar</button>
+      <button type="submit" class="btn primary">Crear suscripción</button>
+    </div>
+  </form>
+</template>
+{% endblock %}

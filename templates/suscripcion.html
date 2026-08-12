@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Suscripción · {{ s.empresa_c or '—' }} · CRM{% endblock %}
+{% block heading %}Suscripción · {{ s.empresa_c or 'Sin empresa' }}{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <a class="btn" href="{{ url_for('suscripciones') }}">← Suscripciones</a>
+  <span class="count">{{ s.plan_c or 'Sin plan' }}</span>
+</div>
+
+{% set pago_pendiente = pagos|selectattr('estado', 'equalto', 'pendiente')|first %}
+
+{% if pago_pendiente and pago_pendiente.url_pago %}
+  {% if pago_pendiente.metodo == 'nequi' %}
+  <div class="panel nequi-panel">
+    <h2>Cobro con Nequi</h2>
+    <p class="muted" style="margin-bottom:10px;">El cliente debe escanear este QR con la app de <strong>Nequi</strong> ({{ pago_pendiente.monto|money }} COP). El pago se confirma automáticamente cada minuto, o haz clic en “Verificar”.</p>
+    <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:center;">
+      <div class="qr-box">
+        <img src="{{ pago_pendiente.url_pago|qr }}" alt="QR de pago Nequi">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px; align-items:flex-start;">
+        <form method="post" action="{{ url_for('suscripcion_nequi_estado', sid=s.id) }}">
+          <button class="btn primary">Verificar si ya pagó</button>
+        </form>
+        <span class="muted small">Si el QR venció (45 min), genera un cobro nuevo.</span>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="panel" style="border-color: var(--primary);">
+    <h2>Cobro pendiente</h2>
+    <p class="muted" style="margin-bottom:10px;">El cliente todavía no ha pagado ({{ pago_pendiente.monto|money }} por {{ s.ciclo }}). Envía el enlace de pago:</p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+      <a class="btn primary" href="{{ pago_pendiente.url_pago }}" target="_blank" rel="noopener">Abrir enlace de pago</a>
+      {% set wa_texto = 'Hola ' ~ (s.empresa_c or '') ~ ', puedes completar el pago de tu suscripción aquí: ' ~ pago_pendiente.url_pago %}
+      {% if s.empresa_tel %}
+        <a class="btn" target="_blank" rel="noopener"
+           href="https://wa.me/{{ s.empresa_tel|replace('-','')|replace(' ','') }}?text={{ wa_texto|urlencode }}">Enviar por WhatsApp</a>
+      {% endif %}
+      {% if s.empresa_email %}
+        <a class="btn" target="_blank" rel="noopener"
+           href="mailto:{{ s.empresa_email }}?subject=Enlace de pago&amp;body={{ wa_texto|urlencode }}">Enviar por email</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+{% elif pago_pendiente and pago_pendiente.detalle %}
+<div class="panel" style="border-color: var(--amber);">
+  <h2>Cobro pendiente (sin enlace)</h2>
+  <p class="muted">{{ pago_pendiente.detalle }}</p>
+  <p class="muted small">Configura la pasarela o marca el pago como hecho manualmente.</p>
+</div>
+{% endif %}
+
+<div class="grid-2">
+  <div class="panel">
+    <h2>Datos de la suscripción</h2>
+    <dl class="detail">
+      <dt>Estado</dt><dd><span class="estado estado-{{ s.estado }}">{{ susc_estados.get(s.estado, s.estado) }}</span></dd>
+      <dt>Plan</dt><dd>{{ s.plan_c or '—' }}</dd>
+      <dt>Precio</dt><dd>{{ s.precio_anual|money if s.ciclo == 'anual' else s.precio_mensual|money }} <span class="muted">/{{ s.ciclo }}</span></dd>
+      <dt>Límites</dt><dd>{{ s.limite_usuarios or 0 }} usuarios · {{ 'contactos ilimitados' if (s.limite_contactos or 0) == 0 else s.limite_contactos ~ ' contactos' }}</dd>
+      <dt>Inicio</dt><dd>{{ s.inicio or '—' }}</dd>
+      <dt>Último pago</dt><dd>{{ s.ultimo_pago or '—' }}</dd>
+      <dt>Próximo pago</dt><dd>{{ s.proximo_pago or '—' }}</dd>
+      <dt>Notas</dt><dd>{{ s.notas or '—' }}</dd>
+    </dl>
+  </div>
+
+  <div class="panel">
+    <h2>Acciones</h2>
+    <div class="toolbar" style="margin-bottom:0;">
+      <form class="inline-form" method="post" action="{{ url_for('suscripcion_pagar', sid=s.id) }}">
+        <button class="btn primary">Generar cobro / enlace</button>
+      </form>
+      <form class="inline-form" method="post" action="{{ url_for('suscripcion_pagado', sid=s.id) }}">
+        <button class="btn" onclick="return confirm('¿Marcar el último cobro pendiente como pagado?')">Marcar pagado</button>
+      </form>
+      <form class="inline-form" method="post" action="{{ url_for('suscripcion_prorrogar', sid=s.id) }}">
+        <button class="btn" onclick="return confirm('¿Renovar un ciclo más (gratis/manual)?')">Prorrogar 1 ciclo</button>
+      </form>
+    </div>
+    <div class="toolbar" style="margin:8px 0 0;">
+      {% if s.estado == 'activa' %}
+      <form class="inline-form" method="post" action="{{ url_for('suscripcion_cancelar', sid=s.id) }}">
+        <button class="btn small danger" onclick="return confirm('¿Cancelar la suscripción?')">Cancelar</button>
+      </form>
+      {% elif s.estado == 'cancelada' or s.estado == 'vencida' %}
+      <form class="inline-form" method="post" action="{{ url_for('suscripcion_reactivar', sid=s.id) }}">
+        <button class="btn small">Reactivar (pendiente de cobro)</button>
+      </form>
+      {% endif %}
+      <form class="inline-form" method="post" action="{{ url_for('suscripcion_eliminar', sid=s.id) }}">
+        <button class="btn small danger" onclick="return confirm('¿Eliminar definitivamente esta suscripción y sus pagos?')">Eliminar</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Historial de pagos</h2>
+  {% if pagos %}
+  <table class="table">
+    <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Transacción</th><th>Estado</th><th></th></tr></thead>
+    <tbody>
+    {% for pg in pagos %}
+      <tr>
+        <td>{{ pg.creado }}</td>
+        <td>{{ pg.monto|money }}</td>
+        <td>{{ pg.metodo or '—' }}</td>
+        <td>{{ pg.transaction_id or '—' }}</td>
+        <td><span class="estado estado-pago-{{ pg.estado }}">{{ pago_estados.get(pg.estado, pg.estado) }}</span></td>
+        <td class="actions">
+          {% if pg.estado == 'pendiente' and pg.url_pago %}
+            {% if pg.metodo == 'nequi' %}
+              <form class="inline-form" method="post" action="{{ url_for('suscripcion_nequi_estado', sid=s.id) }}">
+                <button class="btn small">Verificar pago</button>
+              </form>
+            {% else %}
+              <a class="btn small" href="{{ pg.url_pago }}" target="_blank" rel="noopener">Enlace</a>
+            {% endif %}
+          {% elif pg.estado == 'pendiente' %}
+            <form class="inline-form" method="post" action="{{ url_for('suscripcion_pagado', sid=s.id) }}">
+              <button class="btn small">Marcar pagado</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">Sin pagos registrados.</p>
+  {% endif %}
+</div>
+{% endblock %}

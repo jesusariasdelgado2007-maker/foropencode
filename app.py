@@ -10,6 +10,14 @@ from datetime import date, datetime, timedelta
 from email.header import Header
 from email.mime.text import MIMEText
 
+import calendar
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from flask import (
     Flask,
     render_template,
@@ -22,12 +30,19 @@ from flask import (
 )
 
 import db
+import pasarela
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data", "crm.db")
 
 app = Flask(__name__)
 app.secret_key = "crm-local-simple-2026"
+
+SIMBOLOS_MONEDA = {
+    "EUR": "€", "USD": "$", "MXN": "$", "ARS": "$", "COP": "$",
+    "CLP": "$", "PEN": "S/", "BRL": "R$", "GBP": "£",
+}
+CURRENCY = "EUR"
 
 
 @app.template_filter("money")
@@ -36,7 +51,8 @@ def money_format(value):
         value = float(value or 0)
     except (TypeError, ValueError):
         value = 0
-    return f"{value:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+    mon = SIMBOLOS_MONEDA.get(CURRENCY, (CURRENCY + " ").upper())
+    return f"{value:,.2f} {mon}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 ETAPAS = ["Prospeccion", "Calificado", "Propuesta", "Negociacion", "Ganado", "Perdido"]
 
@@ -44,7 +60,8 @@ ETAPAS = ["Prospeccion", "Calificado", "Propuesta", "Negociacion", "Ganado", "Pe
 def get_db():
     if "db" not in g:
         g.db = db.connect()
-        g.db.row_factory = sqlite3.Row if not db.is_postgres() else None
+        if not db.is_postgres():
+            g.db.row_factory = sqlite3.Row
     return g.db
 
 
@@ -83,9 +100,27 @@ def resolve_empresa(nombre):
 
 @app.context_processor
 def inject_globals():
+    global CURRENCY
+    try:
+        CURRENCY = (get_ajustes().get("moneda") or "EUR").upper()
+    except Exception:
+        CURRENCY = "EUR"
     return {
         "etapas": ETAPAS,
         "hoy": date.today().isoformat(),
+        "moneda_simbolo": SIMBOLOS_MONEDA.get(CURRENCY, CURRENCY + " "),
+        "susc_estados": {
+            "pendiente": "Pendiente de pago",
+            "activa": "Activa",
+            "vencida": "Vencida",
+            "cancelada": "Cancelada",
+        },
+        "pago_estados": {
+            "pendiente": "Pendiente",
+            "aprobado": "Aprobado",
+            "rechazado": "Rechazado",
+            "fallo": "Fallo",
+        },
     }
 
 
@@ -138,7 +173,7 @@ def index():
     tareas_pend = query(
         """SELECT t.*, c.nombre contacto
            FROM tareas t LEFT JOIN contactos c ON c.id=t.contacto_id
-           WHERE t.completada=0 ORDER BY COALESCE(t.vencimiento,'9999') ASC LIMIT 5"""
+           WHERE t.completada=0 ORDER BY COALESCE(CAST(t.vencimiento AS TEXT),'9999') ASC LIMIT 5"""
     )
     pipeline = query(
         "SELECT etapa, COUNT(*) c, COALESCE(SUM(valor),0) v FROM ventas GROUP BY etapa"
@@ -429,7 +464,7 @@ def tareas():
             """SELECT t.*, c.nombre contacto, e.nombre empresa FROM tareas t
                LEFT JOIN contactos c ON c.id=t.contacto_id
                LEFT JOIN empresas e ON e.id=t.empresa_id
-               WHERE t.completada=0 ORDER BY COALESCE(t.vencimiento,'9999') ASC"""
+               WHERE t.completada=0 ORDER BY COALESCE(CAST(t.vencimiento AS TEXT),'9999') ASC"""
         )
     contactos_lista = query("SELECT id, nombre FROM contactos ORDER BY nombre")
     empresas_lista = query("SELECT id, nombre FROM empresas ORDER BY nombre")
@@ -576,6 +611,160 @@ def set_ajuste(clave, valor):
         "ON CONFLICT(clave) DO UPDATE SET valor=excluded.valor",
         (clave, valor),
     )
+
+
+# ---------------------------------------------------------------------------
+# Suscripciones (SaaS)
+# ---------------------------------------------------------------------------
+@app.template_filter("qr")
+def qr_svg(value):
+    """Genera un QR en SVG (data URI) para mostrar con la app Nequi."""
+    if not value:
+        return ""
+    try:
+        import base64
+        import io
+        import xml.etree.ElementTree as ET
+
+        import qrcode
+        from qrcode.image.svg import SvgPathImage
+
+        img = qrcode.make(str(value), image_factory=SvgPathImage, box_size=6)
+        buf = io.BytesIO()
+        ET.ElementTree(img.get_image()).write(buf, encoding="utf-8")
+        return "data:image/svg+xml;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return ""
+
+
+def _sumar_ciclo(fecha, ciclo):
+    """Suma un periodo (1 mes o 1 año) a una fecha ISO; devuelve fecha ISO."""
+    if fecha is None:
+        d = date.today()
+    elif isinstance(fecha, str):
+        try:
+            d = datetime.strptime(fecha[:10], "%Y-%m-%d").date()
+        except ValueError:
+            d = date.today()
+    else:
+        d = fecha
+    meses = 12 if (ciclo or "").lower() == "anual" else 1
+    m = d.month - 1 + meses
+    y = d.year + m // 12
+    m = m % 12 + 1
+    ultimo = calendar.monthrange(y, m)[1]
+    return date(y, m, min(d.day, ultimo)).isoformat()
+
+
+def _precio_plan(plan, ciclo):
+    if not plan:
+        return 0
+    return float(plan["precio_anual"] or 0) if (ciclo or "").lower() == "anual" else float(plan["precio_mensual"] or 0)
+
+
+def _susc_detalle(sid):
+    return query(
+        """SELECT s.*, e.nombre empresa_c, e.telefono empresa_tel, e.email empresa_email,
+                  p.nombre plan_c, p.precio_mensual, p.precio_anual,
+                  p.limite_usuarios, p.limite_contactos
+           FROM suscripciones s
+           LEFT JOIN empresas e ON e.id=s.empresa_id
+           LEFT JOIN planes p ON p.id=s.plan_id
+           WHERE s.id=?""",
+        (sid,),
+        one=True,
+    )
+
+
+def _lista_susc():
+    return query(
+        """SELECT s.*, e.nombre empresa_c, p.nombre plan_c, p.precio_mensual,
+                  p.precio_anual, p.limite_usuarios, p.limite_contactos
+           FROM suscripciones s
+           LEFT JOIN empresas e ON e.id=s.empresa_id
+           LEFT JOIN planes p ON p.id=s.plan_id
+           ORDER BY s.id DESC"""
+    )
+
+
+def _stats_susc():
+    lista = _lista_susc()
+    hoy = date.today()
+    limite = (hoy + timedelta(days=30)).isoformat()
+    activas = [s for s in lista if s["estado"] == "activa"]
+    vencidas = [s for s in lista if s["estado"] == "vencida"]
+    por_vencer = [s for s in activas if s["proximo_pago"] and s["proximo_pago"] <= limite]
+    mrr = sum(
+        (float(s["precio_anual"] or 0) / 12) if s["ciclo"] == "anual" else float(s["precio_mensual"] or 0)
+        for s in activas
+    )
+    return {
+        "lista": lista,
+        "activas": len(activas),
+        "vencidas": len(vencidas),
+        "por_vencer": len(por_vencer),
+        "mrr": mrr,
+        "total": len(lista),
+    }
+
+
+def _certificar_pago(pago_id, trans_id="", pagado=True):
+    """Marca un pago como aprobado/rechazado y actualiza la suscripción."""
+    pago = query("SELECT * FROM pagos WHERE id=?", (pago_id,), one=True)
+    if not pago:
+        return
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    hoy = date.today().isoformat()
+    execute(
+        "UPDATE pagos SET estado=?, transaction_id=COALESCE(NULLIF(?,''), transaction_id), "
+        "pagado_en=? WHERE id=?",
+        ("aprobado" if pagado else "rechazado", trans_id, ahora if pagado else None, pago_id),
+    )
+    if not pagado or not pago["suscripcion_id"]:
+        return
+    sub = query("SELECT * FROM suscripciones WHERE id=?", (pago["suscripcion_id"],), one=True)
+    if not sub:
+        return
+    inicio = sub["inicio"] or (sub["ultimo_pago"] or hoy)
+    prox = _sumar_ciclo(hoy, sub["ciclo"] or "mensual")
+    execute(
+        "UPDATE suscripciones SET estado='activa', ultimo_pago=?, proximo_pago=?, "
+        "inicio=COALESCE(inicio, ?) WHERE id=?",
+        (hoy, prox, hoy, sub["id"]),
+    )
+
+
+def _nuevo_pago(sid, gateway, base_url):
+    """Crea un cargo pendiente y genera el enlace de pago. Devuelve (pago_id, error)."""
+    sub = _susc_detalle(sid)
+    if not sub:
+        return None, "La suscripción no existe."
+    plan = query("SELECT * FROM planes WHERE id=?", (sub["plan_id"],), one=True)
+    if not plan:
+        return None, "El plan de la suscripción ya no existe."
+    monto = _precio_plan(plan, sub["ciclo"] or "mensual")
+    if monto <= 0:
+        return None, "El plan no tiene precio. Configúralo en Planes."
+    gateway = (gateway or "").lower()
+    # Nequi cobra en pesos colombianos (COP), sin decimales
+    moneda = "COP" if gateway == "nequi" else (get_ajustes().get("moneda") or "EUR").upper()
+    pid = execute(
+        "INSERT INTO pagos (suscripcion_id, monto, moneda, metodo, estado) "
+        "VALUES (?, ?, ?, ?, 'pendiente')",
+        (sid, monto, moneda, gateway or "manual"),
+    )
+    if not gateway:
+        return pid, ""
+    retorno = base_url.rstrip("/") + url_for("suscripcion_detalle", sid=sid)
+    concepto = f"Suscripción CRM — {sub['empresa_c'] or 'Cliente'} · {plan['nombre']}"
+    url_pago, trans_id, err = pasarela.generar_link(
+        get_ajustes(), gateway, monto, moneda, concepto, pid, retorno, retorno
+    )
+    if url_pago:
+        execute("UPDATE pagos SET url_pago=?, transaction_id=? WHERE id=?", (url_pago, trans_id, pid))
+    else:
+        execute("UPDATE pagos SET detalle=? WHERE id=?", (err or "Sin pasarela configurada", pid))
+    return pid, err
 
 
 def rellenar(texto, contacto=None, venta=None, empresa=None):
@@ -738,7 +927,7 @@ def run_automation():
     # 1) Enviar mensajes programados que ya vencen
     debidos = query(
         "SELECT * FROM mensajes WHERE estado='pendiente' "
-        "AND substr(enviar_en,1,16) <= ?",
+        "AND substr(CAST(enviar_en AS TEXT),1,16) <= ?",
         (ahora,),
     )
     for m in debidos:
@@ -822,6 +1011,51 @@ def run_automation():
                         v["contacto_id"], v["empresa_id"],
                     ),
                 )
+
+    # 4) Suscripciones: marcar vencidas y crear aviso de renovación
+    try:
+        hoy_s = date.today().isoformat()
+        activas = query(
+            """SELECT s.*, e.nombre empresa_c, p.nombre plan_c
+               FROM suscripciones s
+               LEFT JOIN empresas e ON e.id=s.empresa_id
+               LEFT JOIN planes p ON p.id=s.plan_id
+               WHERE s.estado='activa'"""
+        )
+        for s in activas:
+            if s["proximo_pago"] and s["proximo_pago"] <= hoy_s:
+                execute("UPDATE suscripciones SET estado='vencida' WHERE id=?", (s["id"],))
+                titulo = f"Renovar suscripción de {s['empresa_c'] or 'cliente'} — {s['plan_c'] or 'sin plan'}"
+                dup = query(
+                    "SELECT id FROM tareas WHERE titulo=? AND completada=0", (titulo,), one=True
+                )
+                if not dup:
+                    execute(
+                        "INSERT INTO tareas (titulo, descripcion, vencimiento) VALUES (?, ?, ?)",
+                        (
+                            titulo,
+                            f"La suscripción venció el {s['proximo_pago']}. Genera el cobro de renovación.",
+                            hoy_s,
+                        ),
+                    )
+    except Exception:
+        pass
+
+    # 5) Nequi: confirmar pagos por QR (consulta de estado cada minuto)
+    try:
+        if (get_ajustes().get("pasarela") or "").lower() == "nequi":
+            pendientes = query(
+                "SELECT * FROM pagos WHERE estado='pendiente' AND metodo='nequi'"
+            )
+            for pg in pendientes:
+                if not pg["url_pago"]:
+                    continue
+                res = pasarela.confirmar_evento(get_ajustes(), "nequi", {"qr": pg["url_pago"]})
+                if res:
+                    trans_id, aprobado, monto, ref = res
+                    _certificar_pago(pg["id"], trans_id, pagado=aprobado)
+    except Exception:
+        pass
 
 
 def scheduler_loop():
@@ -988,6 +1222,267 @@ def mensaje_eliminar(mid):
     return redirect(request.referrer or url_for("mensajes"))
 
 
+# ---------------------------------------------------------------------------
+# Suscripciones (SaaS): planes, licencias y cobros
+# ---------------------------------------------------------------------------
+@app.route("/planes")
+def planes():
+    lista = query("SELECT * FROM planes ORDER BY id DESC")
+    return render_template("planes.html", lista=lista)
+
+
+@app.route("/planes/nueva", methods=["POST"])
+def plan_nueva():
+    d = form_val("nombre", "descripcion")
+    if not d["nombre"]:
+        flash("El plan necesita un nombre", "error")
+        return redirect(url_for("planes"))
+    try:
+        pm = float(request.form.get("precio_mensual") or 0)
+        pa = float(request.form.get("precio_anual") or 0)
+        lu = int(request.form.get("limite_usuarios") or 1)
+        lc = int(request.form.get("limite_contactos") or 0)
+    except ValueError:
+        flash("Precios y límites deben ser números", "error")
+        return redirect(url_for("planes"))
+    execute(
+        "INSERT INTO planes (nombre, precio_mensual, precio_anual, limite_usuarios, "
+        "limite_contactos, descripcion, activo) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (d["nombre"], pm, pa, lu, lc, d["descripcion"], 1 if request.form.get("activo") else 0),
+    )
+    flash("Plan creado", "ok")
+    return redirect(url_for("planes"))
+
+
+@app.route("/planes/<int:pid>/editar", methods=["POST"])
+def plan_editar(pid):
+    d = form_val("nombre", "descripcion")
+    try:
+        pm = float(request.form.get("precio_mensual") or 0)
+        pa = float(request.form.get("precio_anual") or 0)
+        lu = int(request.form.get("limite_usuarios") or 1)
+        lc = int(request.form.get("limite_contactos") or 0)
+    except ValueError:
+        flash("Precios y límites deben ser números", "error")
+        return redirect(url_for("planes"))
+    execute(
+        "UPDATE planes SET nombre=?, precio_mensual=?, precio_anual=?, limite_usuarios=?, "
+        "limite_contactos=?, descripcion=?, activo=? WHERE id=?",
+        (d["nombre"], pm, pa, lu, lc, d["descripcion"], 1 if request.form.get("activo") else 0, pid),
+    )
+    flash("Plan actualizado", "ok")
+    return redirect(url_for("planes"))
+
+
+@app.route("/planes/<int:pid>/eliminar", methods=["POST"])
+def plan_eliminar(pid):
+    execute("DELETE FROM planes WHERE id=?", (pid,))
+    flash("Plan eliminado", "ok")
+    return redirect(url_for("planes"))
+
+
+@app.route("/suscripciones")
+def suscripciones():
+    stats = _stats_susc()
+    planes_act = query("SELECT * FROM planes WHERE activo=1 ORDER BY nombre")
+    empresas = query("SELECT id, nombre FROM empresas ORDER BY nombre")
+    return render_template(
+        "suscripciones.html", stats=stats, planes=planes_act, empresas=empresas
+    )
+
+
+@app.route("/suscripciones/nueva", methods=["POST"])
+def suscripcion_nueva():
+    try:
+        empresa_id = int(request.form.get("empresa_id") or 0)
+        plan_id = int(request.form.get("plan_id") or 0)
+    except ValueError:
+        empresa_id = plan_id = 0
+    ciclo = request.form.get("ciclo") or "mensual"
+    notas = request.form.get("notas", "").strip()
+    if not empresa_id or not plan_id:
+        flash("Selecciona la empresa y el plan", "error")
+        return redirect(url_for("suscripciones"))
+    plan = query("SELECT * FROM planes WHERE id=? AND activo=1", (plan_id,), one=True)
+    if not plan:
+        flash("El plan no existe o está inactivo", "error")
+        return redirect(url_for("suscripciones"))
+    sid = execute(
+        "INSERT INTO suscripciones (empresa_id, plan_id, estado, ciclo, notas) "
+        "VALUES (?, ?, 'pendiente', ?, ?)",
+        (empresa_id, plan_id, ciclo, notas),
+    )
+    gateway = (get_ajustes().get("pasarela") or "").strip()
+    if gateway:
+        _nuevo_pago(sid, gateway, get_ajustes().get("public_url") or "http://127.0.0.1:5000")
+    flash("Suscripción creada. Genera el cobro desde su ficha.", "ok")
+    return redirect(url_for("suscripcion_detalle", sid=sid))
+
+
+@app.route("/suscripciones/<int:sid>")
+def suscripcion_detalle(sid):
+    s = _susc_detalle(sid)
+    if not s:
+        flash("Suscripción no encontrada", "error")
+        return redirect(url_for("suscripciones"))
+    pagos = query("SELECT * FROM pagos WHERE suscripcion_id=? ORDER BY id DESC", (sid,))
+    return render_template("suscripcion.html", s=s, pagos=pagos)
+
+
+@app.route("/suscripciones/<int:sid>/pagar", methods=["POST"])
+def suscripcion_pagar(sid):
+    gateway = (get_ajustes().get("pasarela") or "").strip()
+    base = get_ajustes().get("public_url") or "http://127.0.0.1:5000"
+    pago_id, err = _nuevo_pago(sid, gateway, base)
+    if err:
+        flash(err, "error")
+    else:
+        mensaje = "QR de Nequi generado. El cliente debe escanearlo con su app." if gateway.lower() == "nequi" else "Cobro generado. Revisa el enlace en la ficha."
+        flash(mensaje, "ok")
+    return redirect(url_for("suscripcion_detalle", sid=sid))
+
+
+@app.route("/suscripciones/<int:sid>/nequi/estado", methods=["POST"])
+def suscripcion_nequi_estado(sid):
+    pago = query(
+        "SELECT * FROM pagos WHERE suscripcion_id=? AND estado='pendiente' AND metodo='nequi' "
+        "ORDER BY id DESC",
+        (sid,),
+        one=True,
+    )
+    if not pago or not pago["url_pago"]:
+        flash("No hay un cobro Nequi pendiente", "error")
+        return redirect(url_for("suscripcion_detalle", sid=sid))
+    res = pasarela.confirmar_evento(get_ajustes(), "nequi", {"qr": pago["url_pago"]})
+    if not res:
+        flash("El pago aún no se ha completado (o no se encuentra aprobado en Nequi).", "error")
+        return redirect(url_for("suscripcion_detalle", sid=sid))
+    trans_id, aprobado, monto, ref = res
+    _certificar_pago(pago["id"], trans_id, pagado=aprobado)
+    flash("¡Pago confirmado con Nequi! La suscripción está activa." if aprobado else "El pago no fue aprobado.", "ok" if aprobado else "error")
+    return redirect(url_for("suscripcion_detalle", sid=sid))
+
+
+@app.route("/suscripciones/<int:sid>/pagado", methods=["POST"])
+def suscripcion_pagado(sid):
+    pago = query(
+        "SELECT * FROM pagos WHERE suscripcion_id=? AND estado='pendiente' ORDER BY id DESC",
+        (sid,),
+        one=True,
+    )
+    if not pago:
+        s = _susc_detalle(sid)
+        plan = query("SELECT * FROM planes WHERE id=?", (s["plan_id"],), one=True) if s else None
+        monto = _precio_plan(plan, s["ciclo"] or "mensual") if plan else 0
+        pago_id = execute(
+            "INSERT INTO pagos (suscripcion_id, monto, moneda, metodo, estado) "
+            "VALUES (?, ?, ?, 'manual', 'pendiente')",
+            (sid, monto, get_ajustes().get("moneda") or "EUR"),
+        )
+    else:
+        pago_id = pago["id"]
+    _certificar_pago(pago_id, "", pagado=True)
+    flash("Suscripción marcada como pagada", "ok")
+    return redirect(url_for("suscripcion_detalle", sid=sid))
+
+
+@app.route("/suscripciones/<int:sid>/prorrogar", methods=["POST"])
+def suscripcion_prorrogar(sid):
+    s = _susc_detalle(sid)
+    if not s:
+        flash("Suscripción no encontrada", "error")
+        return redirect(url_for("suscripciones"))
+    plan = query("SELECT * FROM planes WHERE id=?", (s["plan_id"],), one=True)
+    monto = _precio_plan(plan, s["ciclo"] or "mensual") if plan else 0
+    pid = execute(
+        "INSERT INTO pagos (suscripcion_id, monto, moneda, metodo, estado, pagado_en) "
+        "VALUES (?, ?, ?, 'manual', 'aprobado', ?)",
+        (sid, monto, get_ajustes().get("moneda") or "EUR", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    _certificar_pago(pid, "", pagado=True)
+    flash("Periodo renovado un ciclo más", "ok")
+    return redirect(url_for("suscripcion_detalle", sid=sid))
+
+
+@app.route("/suscripciones/<int:sid>/cancelar", methods=["POST"])
+def suscripcion_cancelar(sid):
+    execute("UPDATE suscripciones SET estado='cancelada' WHERE id=?", (sid,))
+    flash("Suscripción cancelada", "ok")
+    return redirect(url_for("suscripcion_detalle", sid=sid))
+
+
+@app.route("/suscripciones/<int:sid>/reactivar", methods=["POST"])
+def suscripcion_reactivar(sid):
+    execute("UPDATE suscripciones SET estado='pendiente' WHERE id=?", (sid,))
+    flash("Suscripción reactivada (pendiente de cobro)", "ok")
+    return redirect(url_for("suscripcion_detalle", sid=sid))
+
+
+@app.route("/suscripciones/<int:sid>/eliminar", methods=["POST"])
+def suscripcion_eliminar(sid):
+    execute("UPDATE suscripciones SET estado='cancelada' WHERE id=?", (sid,))
+    execute("DELETE FROM suscripciones WHERE id=?", (sid,))
+    flash("Suscripción eliminada", "ok")
+    return redirect(url_for("suscripciones"))
+
+
+@app.route("/pasarela/config")
+def pasarela_config():
+    cfg = get_ajustes()
+    return render_template("pasarela.html", cfg=cfg)
+
+
+@app.route("/pasarela/guardar", methods=["POST"])
+def pasarela_guardar():
+    claves = (
+        "pasarela", "moneda", "mp_access_token", "stripe_secret_key",
+        "stripe_webhook_secret", "paypal_client_id", "paypal_secret",
+        "paypal_sandbox", "public_url",
+        "nequi_client_id", "nequi_secret", "nequi_api_key",
+        "nequi_codigo_comercio", "nequi_sandbox",
+    )
+    for clave in claves:
+        set_ajuste(clave, request.form.get(clave, ""))
+    flash("Configuración de cobros guardada", "ok")
+    return redirect(url_for("pasarela_config"))
+
+
+def _webhook_aplicar(res):
+    if not res:
+        return
+    trans_id, aprobado, monto, ref = res
+    try:
+        pago_id = int(ref)
+    except (TypeError, ValueError):
+        return
+    pago = query("SELECT * FROM pagos WHERE id=?", (pago_id,), one=True)
+    if not pago or pago["estado"] == "aprobado":
+        return
+    _certificar_pago(pago_id, trans_id, pagado=aprobado)
+    print("Webhook procesado: pago", pago_id, "->", "aprobado" if aprobado else "rechazado")
+
+
+@app.route("/webhook/mercadopago", methods=["POST"])
+def webhook_mp():
+    res = pasarela.confirmar_evento(get_ajustes(), "mercadopago", request.data)
+    _webhook_aplicar(res)
+    return "", 200
+
+
+@app.route("/webhook/stripe", methods=["POST"])
+def webhook_stripe():
+    res = pasarela.confirmar_evento(get_ajustes(), "stripe", request.data, dict(request.headers))
+    _webhook_aplicar(res)
+    return "", 200
+
+
+@app.route("/webhook/paypal", methods=["POST"])
+def webhook_paypal():
+    res = pasarela.confirmar_evento(get_ajustes(), "paypal", request.data)
+    _webhook_aplicar(res)
+    return "", 200
+
+
 @app.route("/ajustes/guardar", methods=["POST"])
 def ajustes_guardar():
     for clave in ("smtp_host", "smtp_port", "smtp_usuario", "smtp_password",
@@ -1002,7 +1497,12 @@ def ajustes_guardar():
 if __name__ == "__main__":
     import webbrowser
 
-    from init_db import init_db
+    if db.is_postgres():
+        from pg_schema import init_pg
+        init_pg()
+    else:
+        from init_db import init_db
+        init_db()
 
     def salida(texto):
         try:
@@ -1010,7 +1510,6 @@ if __name__ == "__main__":
         except Exception:
             pass
 
-    init_db()
     port = int(os.environ.get("CRM_PORT", 5000))
     url = f"http://127.0.0.1:{port}"
 
@@ -1018,9 +1517,12 @@ if __name__ == "__main__":
     if not os.environ.get("CRM_NO_BROWSER"):
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
 
+    backend = "PostgreSQL" if db.is_postgres() else "SQLite"
     salida("=" * 50)
     salida(f"  CRM abierto en:  {url}")
+    salida(f"  Backend: {backend}")
     salida("  Cierra esta ventana para detener el CRM.")
-    salida("  Tus datos se guardan en: data/crm.db")
+    if not db.is_postgres():
+        salida("  Tus datos se guardan en: data/crm.db")
     salida("=" * 50)
     app.run(host="127.0.0.1", port=port, debug=False, threaded=True)

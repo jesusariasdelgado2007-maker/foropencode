@@ -21,6 +21,7 @@
       <a href="{{ url_for('tareas') }}" class="{{ 'active' if request.endpoint=='tareas' }}">Tareas</a>
       <a href="{{ url_for('citas') }}" class="{{ 'active' if request.endpoint=='citas' }}">Citas</a>
       <a href="{{ url_for('mensajes') }}" class="{{ 'active' if request.endpoint=='mensajes' }}">Mensajes</a>
+      <a href="{{ url_for('suscripciones') }}" class="{{ 'active' if request.endpoint in ['suscripciones','suscripcion_detalle','planes','pasarela_config'] }}">Suscripciones</a>
     </nav>
     <div class="sidebar-foot">Datos guardados en tu equipo</div>
   </aside>
